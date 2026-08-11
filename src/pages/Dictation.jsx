@@ -1,8 +1,9 @@
 import { useParams, Link } from 'react-router-dom'
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import { getWordsByUnit, getUnitInfo } from '../data'
 import { useSpeech } from '../hooks/useSpeech'
 import { useProgress } from '../hooks/useProgress'
+import { addError, addDictationDone, addStars } from '../db'
 
 export default function Dictation() {
   const { grade, unit } = useParams()
@@ -36,6 +37,13 @@ export default function Dictation() {
       await markCorrect(currentWord.id)
     } else {
       await markWrong(currentWord.id)
+      await addError({
+        wordId: currentWord.id,
+        errorType: 'dictation',
+        userAnswer: trimmed,
+        unitInfo: unitInfo?.unitName || '',
+        word: JSON.stringify({ english: currentWord.english, chinese: currentWord.chinese })
+      })
     }
     setResults(prev => [...prev, { word: currentWord, userAnswer: trimmed, correct }])
   }
@@ -62,6 +70,16 @@ export default function Dictation() {
 
   const correctCount = results.filter(r => r.correct).length
   const wrongList = results.filter(r => !r.correct)
+
+  // Award stars on finish
+  useEffect(() => {
+    if (finished) {
+      const rate = correctCount / Math.max(words.length, 1)
+      const earnedStars = rate >= 0.9 ? 5 : rate >= 0.7 ? 3 : 1
+      addStars(earnedStars, `默写 ${unitInfo?.unitName || ''}`)
+      addDictationDone()
+    }
+  }, [finished])
 
   if (finished) {
     return (
@@ -104,7 +122,7 @@ export default function Dictation() {
           >
             🔄 再来一轮
           </button>
-          <Link to={`/grade/${grade}`} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors">
+          <Link to={`/grade/${grade}/${encodeURIComponent(semester)}`} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors">
             ← 返回
           </Link>
         </div>
@@ -116,7 +134,7 @@ export default function Dictation() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Link to={`/grade/${grade}`} className="text-indigo-500 hover:text-indigo-700 text-sm">← 返回</Link>
+        <Link to={`/grade/${grade}/${encodeURIComponent(semester)}`} className="text-indigo-500 hover:text-indigo-700 text-sm">← 返回</Link>
         <span className="text-sm text-gray-400">{index + 1} / {words.length}</span>
       </div>
 

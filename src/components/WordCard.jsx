@@ -1,6 +1,9 @@
 import SpeechBtn from './SpeechBtn'
+import { getPhonetic } from '../utils/phonetics'
 
 export default function WordCard({ word, flipped, onFlip, showActions = true, onCorrect, onWrong }) {
+  const phonetic = word.phonetic || getPhonetic(word.english)
+
   return (
     <div className="w-full max-w-sm mx-auto">
       {/* Card */}
@@ -11,9 +14,12 @@ export default function WordCard({ word, flipped, onFlip, showActions = true, on
         <div className="card-flip-inner relative w-full aspect-[4/3]">
           {/* Front - English */}
           <div className="card-front absolute inset-0 bg-white rounded-2xl shadow-lg border-2 border-indigo-100 flex flex-col items-center justify-center p-4">
-            <div className="text-4xl sm:text-5xl font-bold text-indigo-700 mb-4 text-center">
+            <div className="text-4xl sm:text-5xl font-bold text-indigo-700 mb-1 text-center">
               {word.english}
             </div>
+            {phonetic && (
+              <div className="text-sm text-gray-400 mb-3 font-mono tracking-wide">{phonetic}</div>
+            )}
             <SpeechBtn text={word.english} />
             <p className="text-gray-400 text-xs mt-3">点击卡片翻转</p>
           </div>
@@ -23,7 +29,10 @@ export default function WordCard({ word, flipped, onFlip, showActions = true, on
             <div className="text-3xl sm:text-4xl font-bold text-indigo-600 mb-2 text-center">
               {word.chinese}
             </div>
-            <div className="text-lg text-gray-500 mb-4">{word.english}</div>
+            <div className="text-lg text-gray-500 mb-1">{word.english}</div>
+            {phonetic && (
+              <div className="text-sm text-gray-400 mb-2 font-mono tracking-wide">{phonetic}</div>
+            )}
             <SpeechBtn text={word.english} />
             <p className="text-gray-400 text-xs mt-3">点击卡片翻转</p>
           </div>

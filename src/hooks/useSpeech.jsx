@@ -1,36 +1,43 @@
-import { useCallback, useState, useEffect, createContext, useContext } from 'react'
+import { useCallback, useState, useEffect, createContext, useContext, useRef } from 'react'
 
-// Voice quality ranking - higher score = more natural
+// --- Voice scoring ---
 function voiceScore(voice) {
   const name = voice.name.toLowerCase()
   let score = 0
-
-  // Edge Natural voices are the best on Windows
   if (name.includes('natural')) score += 100
-  // Microsoft online/natural voices
-  if (name.includes('microsoft') && (name.includes('online') || name.includes('natural'))) score += 80
-  // Google voices (Chrome) - quite natural
+  if (name.includes('microsoft') && name.includes('online')) score += 85
   if (name.includes('google')) score += 70
-  // Microsoft offline voices - decent
   if (name.includes('microsoft') && !name.includes('mobile')) score += 50
-  // macOS system voices - good quality
-  if (name.includes('samantha') || name.includes('daniel') || name.includes('karen') || name.includes('alex')) score += 60
-  // Prefer female voices for teaching (generally clearer)
-  if (name.includes('female') || name.includes('ava') || name.includes('emma') || name.includes('zira') || name.includes('samantha')) score += 10
-  // Prefer US/UK English
+  if (name.includes('samantha') || name.includes('daniel') || name.includes('karen')) score += 60
   if (voice.lang === 'en-US') score += 5
   if (voice.lang === 'en-GB') score += 3
-  // Penalize very robotic voices
   if (name.includes('mobile')) score -= 50
-
   return score
 }
 
-// VoiceContext for global voice settings
+function isFemaleVoice(voice) {
+  const name = voice.name.toLowerCase()
+  return name.includes('female') || name.includes('ava') || name.includes('emma')
+    || name.includes('zira') || name.includes('samantha') || name.includes('susan')
+    || name.includes('linda') || name.includes('catherine') || name.includes('sonia')
+    || name.includes('aria') || name.includes('ana') || name.includes('jenny')
+}
+
+function isMaleVoice(voice) {
+  const name = voice.name.toLowerCase()
+  return name.includes('male') || name.includes('andrew') || name.includes('brian')
+    || name.includes('david') || name.includes('mark') || name.includes('daniel')
+    || name.includes('guy') || name.includes('tom') || name.includes('chris')
+    || name.includes('lee') || name.includes('eric')
+}
+
+// --- Context ---
 const VoiceContext = createContext(null)
 
 export function VoiceProvider({ children }) {
   const [allVoices, setAllVoices] = useState([])
+  const [loading, setLoading] = useState(true)
+  const loadedRef = useRef(false)
   const [selectedVoiceName, setSelectedVoiceName] = useState(() => {
     return localStorage.getItem('english-learner-voice') || 'auto'
   })
@@ -38,38 +45,87 @@ export function VoiceProvider({ children }) {
     return parseFloat(localStorage.getItem('english-learner-rate')) || 0.75
   })
 
-  // Load voices
+  // Aggressively load voices - poll until we get them
   useEffect(() => {
-    const load = () => {
+    if (loadedRef.current) return
+
+    let attempts = 0
+    const MAX_ATTEMPTS = 30 // 3 seconds max
+
+    const tryLoad = () => {
+      attempts++
       const voices = window.speechSynthesis.getVoices()
       if (voices.length > 0) {
+        loadedRef.current = true
+        setLoading(false)
+        const english = voices
+          .filter(v => v.lang.startsWith('en'))
+          .sort((a, b) => voiceScore(b) - voiceScore(a))
+        setAllVoices(english)
+        return
+      }
+
+      // On Chrome, we need to trigger speech to populate voices
+      if (attempts === 1) {
+        try {
+          const dummy = new SpeechSynthesisUtterance('')
+          dummy.volume = 0
+          dummy.rate = 2
+          window.speechSynthesis.speak(dummy)
+        } catch (e) { /* ignore */ }
+      }
+
+      if (attempts < MAX_ATTEMPTS) {
+        setTimeout(tryLoad, 100)
+      } else {
+        setLoading(false) // Give up, show what we have
+        const voices = window.speechSynthesis.getVoices()
+        const english = voices.filter(v => v.lang.startsWith('en'))
+        setAllVoices(english)
+      }
+    }
+
+    // Also listen for the standard event
+    const onVoicesChanged = () => {
+      const voices = window.speechSynthesis.getVoices()
+      if (voices.length > 0 && !loadedRef.current) {
+        loadedRef.current = true
+        setLoading(false)
         const english = voices
           .filter(v => v.lang.startsWith('en'))
           .sort((a, b) => voiceScore(b) - voiceScore(a))
         setAllVoices(english)
       }
     }
-    load()
-    window.speechSynthesis.onvoiceschanged = load
-    return () => { window.speechSynthesis.onvoiceschanged = null }
+    window.speechSynthesis.onvoiceschanged = onVoicesChanged
+
+    // Start polling
+    tryLoad()
+
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null
+      window.speechSynthesis.cancel()
+    }
   }, [])
 
-  // Persist preferences
-  useEffect(() => {
-    localStorage.setItem('english-learner-voice', selectedVoiceName)
-  }, [selectedVoiceName])
+  // Persist
+  useEffect(() => { localStorage.setItem('english-learner-voice', selectedVoiceName) }, [selectedVoiceName])
+  useEffect(() => { localStorage.setItem('english-learner-rate', String(rate)) }, [rate])
 
-  useEffect(() => {
-    localStorage.setItem('english-learner-rate', String(rate))
-  }, [rate])
+  // Organize voices
+  const femaleVoices = allVoices.filter(isFemaleVoice)
+  const maleVoices = allVoices.filter(isMaleVoice)
+  const otherVoices = allVoices.filter(v => !isFemaleVoice(v) && !isMaleVoice(v))
 
-  const topVoices = allVoices.slice(0, 8) // top 8 most natural voices
+  const topFemale = femaleVoices.slice(0, 5)
+  const topMale = maleVoices.slice(0, 5)
 
   return (
     <VoiceContext.Provider value={{
       selectedVoiceName, setSelectedVoiceName,
       rate, setRate,
-      allVoices, topVoices,
+      allVoices, loading,
+      topFemale, topMale, otherVoices: otherVoices.slice(0, 3),
     }}>
       {children}
     </VoiceContext.Provider>
@@ -90,13 +146,11 @@ export function useSpeech() {
     const voices = window.speechSynthesis.getVoices()
     if (voices.length === 0) return null
 
-    // If user selected a specific voice, find it
     if (selectedVoiceName !== 'auto') {
       const found = voices.find(v => v.name === selectedVoiceName)
       if (found) return found
     }
 
-    // Auto mode: pick highest quality voice available
     const english = voices
       .filter(v => v.lang.startsWith('en'))
       .sort((a, b) => voiceScore(b) - voiceScore(a))
@@ -107,10 +161,16 @@ export function useSpeech() {
   const speak = useCallback((text) => {
     if (!window.speechSynthesis) return
 
-    window.speechSynthesis.cancel()
+    const synth = window.speechSynthesis
+    synth.cancel()
 
-    // Small delay to let cancel complete
-    setTimeout(() => {
+    // Chrome bug workaround: resume if paused, then create fresh utterance
+    const timer = setTimeout(() => {
+      // After cancel, Chrome sometimes pauses the synth
+      if (synth.paused) {
+        synth.resume()
+      }
+
       const utterance = new SpeechSynthesisUtterance(text)
       utterance.rate = rate
       utterance.pitch = 1.0
@@ -125,22 +185,36 @@ export function useSpeech() {
       }
 
       utterance.onstart = () => setSpeaking(true)
-      utterance.onend = () => setSpeaking(false)
+      utterance.onend = () => {
+        setSpeaking(false)
+        // Chrome bug: synth pauses after speaking; resume to keep it alive
+        setTimeout(() => {
+          if (synth.paused) synth.resume()
+        }, 10)
+      }
       utterance.onerror = (e) => {
         setSpeaking(false)
-        // If the selected voice fails, retry with default
-        if (voice && e.error === 'language-unavailable') {
-          const fallback = new SpeechSynthesisUtterance(text)
-          fallback.rate = rate
-          fallback.lang = 'en-US'
-          fallback.onstart = () => setSpeaking(true)
-          fallback.onend = () => setSpeaking(false)
-          window.speechSynthesis.speak(fallback)
+        // Retry once on error with a fresh utterance
+        if (e.error !== 'canceled' && e.error !== 'interrupted') {
+          setTimeout(() => {
+            const retry = new SpeechSynthesisUtterance(text)
+            retry.rate = rate
+            retry.pitch = 1.0
+            retry.volume = 1.0
+            if (voice) { retry.voice = voice; retry.lang = voice.lang }
+            else { retry.lang = 'en-US' }
+            retry.onstart = () => setSpeaking(true)
+            retry.onend = () => setSpeaking(false)
+            retry.onerror = () => setSpeaking(false)
+            window.speechSynthesis.speak(retry)
+          }, 60)
         }
       }
 
-      window.speechSynthesis.speak(utterance)
-    }, 50)
+      synth.speak(utterance)
+    }, 60)
+
+    return () => clearTimeout(timer)
   }, [rate, getVoice])
 
   const stop = useCallback(() => {

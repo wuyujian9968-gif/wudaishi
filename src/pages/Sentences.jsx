@@ -30,7 +30,7 @@ export default function Sentences() {
       <div className="text-center space-y-4 py-8">
         <div className="text-5xl">📭</div>
         <h3 className="text-lg font-semibold text-gray-600">本单元暂无句型数据</h3>
-        <Link to={`/grade/${grade}`} className="inline-block px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors">
+        <Link to={`/grade/${grade}/${encodeURIComponent(semester)}`} className="inline-block px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors">
           ← 返回
         </Link>
       </div>
@@ -120,7 +120,7 @@ export default function Sentences() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Link to={`/grade/${grade}`} className="text-indigo-500 hover:text-indigo-700 text-sm">← 返回</Link>
+        <Link to={`/grade/${grade}/${encodeURIComponent(semester)}`} className="text-indigo-500 hover:text-indigo-700 text-sm">← 返回</Link>
         <span className="text-sm text-gray-400">{index + 1} / {sentences.length}</span>
       </div>
 
@@ -310,7 +310,7 @@ export default function Sentences() {
           </button>
         ) : (
           <Link
-            to={`/grade/${grade}`}
+            to={`/grade/${grade}/${encodeURIComponent(semester)}`}
             className="px-4 py-2 rounded-lg bg-green-100 hover:bg-green-200 text-green-700 text-sm font-medium transition-colors"
           >
             完成 ✓

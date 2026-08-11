@@ -1,7 +1,8 @@
 import { useParams, Link, useNavigate } from 'react-router-dom'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { getWordsByUnit, getUnitInfo } from '../data'
 import { useProgress } from '../hooks/useProgress'
+import { addError, addWordsLearned, addStars, updateDailyLog } from '../db'
 import WordCard from '../components/WordCard'
 import ProgressBar from '../components/ProgressBar'
 
@@ -28,12 +29,21 @@ export default function Learn() {
   const handleCorrect = async (wordId) => {
     setCorrectIds(prev => new Set([...prev, wordId]))
     await markCorrect(wordId)
+    await addWordsLearned(1)
     nextWord()
   }
 
   const handleWrong = async (wordId) => {
     setWrongIds(prev => new Set([...prev, wordId]))
     await markWrong(wordId)
+    const w = words.find(x => x.id === wordId)
+    await addError({
+      wordId,
+      errorType: 'learn',
+      unitInfo: w?.unitName || '',
+      word: JSON.stringify({ english: w?.english, chinese: w?.chinese })
+    })
+    await addWordsLearned(1)
     nextWord()
   }
 
@@ -48,6 +58,15 @@ export default function Learn() {
 
   const masteredCount = words.filter(w => progressMap[w.id]?.status === 'mastered').length
   const learnedCount = words.filter(w => progressMap[w.id]?.status === 'learning').length
+
+  // Award stars on completion
+  useEffect(() => {
+    if (finished) {
+      const rate = correctIds.size / Math.max(words.length, 1)
+      const earnedStars = rate >= 0.9 ? 5 : rate >= 0.7 ? 3 : 1
+      addStars(earnedStars, `记单词 ${unitInfo?.unitName || ''}`)
+    }
+  }, [finished])
 
   if (finished) {
     return (
@@ -87,7 +106,7 @@ export default function Learn() {
             🔄 再来一轮
           </button>
           <Link
-            to={`/grade/${grade}`}
+            to={`/grade/${grade}/${encodeURIComponent(semester)}`}
             className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors"
           >
             ← 返回
@@ -101,7 +120,7 @@ export default function Learn() {
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Link to={`/grade/${grade}`} className="text-indigo-500 hover:text-indigo-700 text-sm">
+        <Link to={`/grade/${grade}/${encodeURIComponent(semester)}`} className="text-indigo-500 hover:text-indigo-700 text-sm">
           ← 返回
         </Link>
         <span className="text-sm text-gray-400">{index + 1} / {words.length}</span>

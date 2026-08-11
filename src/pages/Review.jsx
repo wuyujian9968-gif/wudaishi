@@ -3,10 +3,11 @@ import { useState, useMemo, useEffect } from 'react'
 import { getWordsByUnit, allWords, getUnitInfo } from '../data'
 import { useProgress } from '../hooks/useProgress'
 import { calculateNextReview } from '../utils/spacedRepetition'
+import { addError, addWordsReviewed, addStars } from '../db'
 import WordCard from '../components/WordCard'
 
 export default function Review() {
-  const { grade, unit } = useParams()
+  const { grade, semester: semesterParam, unit } = useParams()
   const { progressMap, updateSR, loading } = useProgress()
 
   const [index, setIndex] = useState(0)
@@ -50,6 +51,18 @@ export default function Review() {
       existing.repetitions || 0
     )
     await updateSR(word.id, sr)
+
+    // Log error if they forgot (quality < 3)
+    if (quality < 3) {
+      await addError({
+        wordId: word.id,
+        errorType: 'review',
+        unitInfo: word.unitName || '',
+        word: JSON.stringify({ english: word.english, chinese: word.chinese })
+      })
+    }
+    await addWordsReviewed(1)
+
     setQualityStats(prev => [...prev, { word, quality }])
     setRated(false)
     setFlipped(false)
@@ -60,6 +73,17 @@ export default function Review() {
       setFinished(true)
     }
   }
+
+  // Award stars on finish
+  useEffect(() => {
+    if (finished) {
+      const forgotten = qualityStats.filter(q => q.quality < 3).length
+      const remembered = qualityStats.filter(q => q.quality >= 3).length
+      const rate = remembered / Math.max(qualityStats.length, 1)
+      const earnedStars = rate >= 0.9 ? 5 : rate >= 0.7 ? 3 : 1
+      addStars(earnedStars, '复习')
+    }
+  }, [finished])
 
   if (loading) {
     return <div className="text-center py-8 text-gray-400">加载中...</div>
@@ -73,7 +97,7 @@ export default function Review() {
           {grade ? '本单元暂无需要复习的单词！' : '太棒了！暂无需要复习的单词！'}
         </h3>
         <p className="text-gray-500 text-sm">所有单词都还没到复习时间，或者你都已经掌握了 👍</p>
-        <Link to={grade ? `/grade/${grade}` : '/'} className="inline-block px-5 py-2.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl font-semibold transition-colors">
+        <Link to={grade ? `/grade/${grade}/${encodeURIComponent(semesterParam || '')}` : '/'} className="inline-block px-5 py-2.5 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl font-semibold transition-colors">
           ← 返回
         </Link>
       </div>
@@ -108,7 +132,7 @@ export default function Review() {
           >
             🔄 继续复习
           </button>
-          <Link to={grade ? `/grade/${grade}` : '/'} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors">
+          <Link to={grade ? `/grade/${grade}/${encodeURIComponent(semesterParam || '')}` : '/'} className="px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-xl font-semibold transition-colors">
             ← 返回
           </Link>
         </div>
@@ -117,13 +141,22 @@ export default function Review() {
   }
 
   const currentWord = dueWords[index]
-  const existing = progressMap[currentWord.id]
+  const existing = currentWord ? progressMap[currentWord.id] : null
+
+  if (!currentWord) {
+    return (
+      <div className="text-center py-8 space-y-4">
+        <p className="text-gray-500">暂无复习数据</p>
+        <Link to="/" className="text-indigo-500 hover:text-indigo-700 text-sm">← 返回首页</Link>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Link to={grade ? `/grade/${grade}` : '/'} className="text-indigo-500 hover:text-indigo-700 text-sm">← 返回</Link>
+        <Link to={grade ? `/grade/${grade}/${encodeURIComponent(semesterParam || '')}` : '/'} className="text-indigo-500 hover:text-indigo-700 text-sm">← 返回</Link>
         <span className="text-sm text-gray-400">{index + 1} / {dueWords.length}</span>
       </div>
 
